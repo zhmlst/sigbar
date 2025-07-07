@@ -1,15 +1,20 @@
+#define _GNU_SOURCE
 #include <stddef.h>
-#include <stdlib.h>
-#include <sys/types.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
 #include <sys/epoll.h>
+#include <sys/mman.h>
+#include <linux/memfd.h>
+#include <fcntl.h>
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
-#include <sys/socket.h>
-#include <fcntl.h>
+
+extern char **environ;
 
 #define BUFFER 64
 #define LENGTH(X) (sizeof(X) / sizeof(X[0]))
@@ -129,18 +134,31 @@ reg_proc(Proc *p, int epfd)
 void
 fd_set_nonblock(int fd) {
 	int flags = fcntl(fd, F_GETFL);
-	die_on_err(flags, "fcntl(F_GETFL):");
-	die_on_err(fcntl(fd, F_SETFL, flags | O_NONBLOCK), "fcntl(F_SETFL):");
+	die_on_err(flags, "fcntl(F_GETFL)");
+	die_on_err(fcntl(fd, F_SETFL, flags | O_NONBLOCK), "fcntl(F_SETFL)");
 }
 
 void
 run_command(int sv, const char *c)
 {
+	int fd = memfd_create("script", 0);
+	die_on_err(fd, "memfd_create");
+
+	die_on_err(write(fd, c, strlen(c)), "write(memfd)");
+
+	die_on_err(fchmod(fd, 0700), "fchmod");
+
 	dup2(sv, STDIN_FILENO);
 	dup2(sv, STDOUT_FILENO);
 	close(sv);
-	execl("/bin/sh", "sh", "-c", c, NULL);
-	perror("execl");
+
+	char path[64];
+	snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
+
+	char *const argv[] = { path, NULL };
+	execve(path, argv, environ);
+
+	perror("execve");
 	_exit(EXIT_FAILURE);
 }
 
