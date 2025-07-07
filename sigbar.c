@@ -43,7 +43,7 @@ handle_signal(int s)
 {
 	for (size_t i = 0; i < LENGTH(procs); i++)
 		if (specs[i].signal == s - SIGRTMIN)
-			die_on_err(kill(procs[i].pid, SIGRTMIN), "kill");
+			write(procs[i].sv, "\n", 1);
 }
 
 void

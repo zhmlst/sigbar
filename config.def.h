@@ -9,10 +9,11 @@ static const char spinner[] = R"(
 )";
 
 static const char counter[] = R"(
-	echo 0
-	trap '((counter++)); echo $counter' SIGRTMIN
-	while :; do
-	  read _
+	counter=0
+	echo $counter
+	while read _; do
+	  ((counter++))
+	  echo $counter
 	done
 )";
 
