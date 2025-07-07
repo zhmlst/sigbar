@@ -32,6 +32,18 @@ typedef struct {
 
 #include "config.h"
 
+static void die_on_err(ssize_t val, const char *err);
+static void handle_signal(int s);
+static void setup_signals(void);
+static void excluding_puts(const char *str, const char *exc);
+static void print_status(void);
+static int update_buffer(Proc *p);
+static void wait_events(int epfd);
+static void reg_proc(Proc *p, int epfd);
+static void fd_set_nonblock(int fd);
+static void run_command(int sv, const char *c);
+static void spawn_proc(Proc *p, const Spec *s);
+
 static Proc procs[LENGTH(specs)];
 
 void
