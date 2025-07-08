@@ -33,7 +33,7 @@ typedef struct {
 
 #include "config.h"
 
-static void die_on_err(ssize_t val, const char *err);
+static void die_if(int condition, const char *errmsg);
 static void handle_signal(int sig);
 static void setup_signals(void);
 static void excluding_puts(const char *str, const char *exc);
@@ -49,10 +49,10 @@ static void run_all(int epfd);
 static Proc procs[LENGTH(specs)];
 
 void
-die_on_err(ssize_t val, const char *err)
+die_if(int conidion, const char *errmsg)
 {
-	if (val < 0) {
-		perror(err);
+	if (conidion) {
+		perror(errmsg);
 		exit(EXIT_FAILURE);
 	}
 }
@@ -63,7 +63,7 @@ handle_signal(int s)
 	for (size_t i = 0; i < LENGTH(procs); i++) {
 		if (specs[i].signal == s - SIGRTMIN) {
 			ssize_t w = write(procs[i].sv, "\n", 1);
-			die_on_err(w, "write(proc.sv)");
+			die_if((w < 0), "write(proc.sv)");
 		}
 	}
 }
@@ -111,7 +111,7 @@ update_buffer(Proc *p)
 {
 	char tmp[BUFFER];
 	ssize_t r = read(p->sv, tmp, BUFFER - 1);
-	die_on_err(r, "read");
+	die_if((r < 0), "read");
 	tmp[r] = '\0';
 	if (r == 0 || strcmp(tmp, p->buffer) == 0)
 		return 0;
@@ -132,7 +132,7 @@ wait_events(int epfd)
 			nfds = epoll_wait(epfd, events, LENGTH(procs), -1);
 		} while (nfds == -1 && errno == EINTR);
 
-		die_on_err(nfds, "epoll_wait");
+		die_if((nfds < 0), "epoll_wait");
 		for (size_t i = 0; i < nfds; i++)
 			if(update_buffer(events[i].data.ptr))
 				print_status();
@@ -151,8 +151,8 @@ reg_proc(Proc *p, int epfd)
 void
 fd_set_nonblock(int fd) {
 	int flags = fcntl(fd, F_GETFL);
-	die_on_err(flags, "fcntl(F_GETFL)");
-	die_on_err(fcntl(fd, F_SETFL, flags | O_NONBLOCK), "fcntl(F_SETFL)");
+	die_if((flags < 0), "fcntl(F_GETFL)");
+	die_if((fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0), "fcntl(F_SETFL)");
 }
 
 int
@@ -161,7 +161,7 @@ make_proc(Proc *p)
 	p->sv = -1;
 	p->buffer[0] = '\0';
 	p->pid = fork();
-	die_on_err(p->pid, "fork");
+	die_if((p->pid < 0), "fork");
 	if (p->pid == 0)
 		return 1;
 	return 0;
@@ -171,9 +171,9 @@ void
 run_command(const char *cmd, int sv)
 {
 	int fd = memfd_create("script", 0);
-	die_on_err(fd, "memfd_create");
-	die_on_err(write(fd, cmd, strlen(cmd)), "write(memfd)");
-	die_on_err(fchmod(fd, 0700), "fchmod");
+	die_if((fd < 0), "memfd_create");
+	die_if((write(fd, cmd, strlen(cmd)) < 0), "write(memfd)");
+	die_if((fchmod(fd, 0700) < 0), "fchmod");
 
 	dup2(sv, STDIN_FILENO);
 	dup2(sv, STDOUT_FILENO);
@@ -200,7 +200,7 @@ run_all(int epfd)
 {
 	for (size_t i = 0; i < LENGTH(specs); i++) {
 		int sv[2];
-		die_on_err(socketpair(AF_UNIX, SOCK_STREAM, 0, sv), "socketpair");
+		die_if((socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0), "socketpair");
 		if (make_proc(&procs[i])) {
 			close(sv[1]);
 			run_command(specs[i].command, sv[0]);
