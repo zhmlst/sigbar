@@ -41,8 +41,9 @@ static int update_buffer(Proc *p);
 static void wait_events(int epfd);
 static void reg_proc(Proc *p, int epfd);
 static void fd_set_nonblock(int fd);
-static void run_command(int sv, const char *cmd);
-static void spawn_proc(Proc *p, const Spec *s);
+static void run_command(const char *cmd, int sv);
+static int make_proc(Proc *p);
+static void run_all(int epfd);
 
 static Proc procs[LENGTH(specs)];
 
@@ -153,14 +154,24 @@ fd_set_nonblock(int fd) {
 	die_on_err(fcntl(fd, F_SETFL, flags | O_NONBLOCK), "fcntl(F_SETFL)");
 }
 
+int
+make_proc(Proc *p)
+{
+	p->sv = -1;
+	p->buffer[0] = '\0';
+	p->pid = fork();
+	die_on_err(p->pid, "fork");
+	if (p->pid == 0)
+		return 1;
+	return 0;
+}
+
 void
-run_command(int sv, const char *c)
+run_command(const char *cmd, int sv)
 {
 	int fd = memfd_create("script", 0);
 	die_on_err(fd, "memfd_create");
-
-	die_on_err(write(fd, c, strlen(c)), "write(memfd)");
-
+	die_on_err(write(fd, cmd, strlen(cmd)), "write(memfd)");
 	die_on_err(fchmod(fd, 0700), "fchmod");
 
 	dup2(sv, STDIN_FILENO);
@@ -174,23 +185,25 @@ run_command(int sv, const char *c)
 	execve(path, argv, environ);
 
 	perror("execve");
+	close(fd);
 	_exit(EXIT_FAILURE);
 }
 
 void
-spawn_proc(Proc *p, const Spec *s)
+run_all(int epfd)
 {
-	int sv[2];
-	die_on_err(socketpair(AF_UNIX, SOCK_STREAM, 0, sv), "socketpair");
-	p->pid = fork();
-	die_on_err(p->pid, "fork");
-	if (p->pid == 0) {
-		close(sv[0]);
-		run_command(sv[1], s->command);
+	for (size_t i = 0; i < LENGTH(specs); i++) {
+		int sv[2];
+		die_on_err(socketpair(AF_UNIX, SOCK_STREAM, 0, sv), "socketpair");
+		if (make_proc(&procs[i])) {
+			close(sv[1]);
+			run_command(specs[i].command, sv[0]);
+		} else {
+			close(sv[0]);
+			procs[i].sv = sv[1];
+		}
+		reg_proc(&procs[i], epfd);
 	}
-	close(sv[1]);
-	p->sv = sv[0];
-	fd_set_nonblock(p->sv);
 }
 
 int
@@ -198,10 +211,7 @@ main(int argc, char *argv[])
 {
 	setup_signals();
 	int epfd = epoll_create1(0);
-	for (size_t i = 0; i < LENGTH(specs); i++) {
-		spawn_proc(&procs[i], &specs[i]);
-		reg_proc(&procs[i], epfd);
-	}
+	run_all(epfd);
 	wait_events(epfd);
 	return EXIT_SUCCESS;
 }
