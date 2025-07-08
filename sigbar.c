@@ -44,6 +44,8 @@ static void reg_proc(Proc *p, int epfd);
 static void fd_set_nonblock(int fd);
 static void run_command(const char *cmd, int sv);
 static int make_proc(Proc *p);
+static void exec_memfd(int fd);
+static int make_runnable_memfd(const char *cmd);
 static void run_all(int epfd);
 
 static Proc procs[LENGTH(specs)];
@@ -154,17 +156,7 @@ make_proc(Proc *p)
 }
 
 void
-run_command(const char *cmd, int sv)
-{
-	int fd = memfd_create("script", 0);
-	die_if(fd < 0, "memfd_create");
-	die_if(write(fd, cmd, strlen(cmd)) < 0, "write(memfd)");
-	die_if(fchmod(fd, 0700) < 0, "fchmod");
-
-	dup2(sv, STDIN_FILENO);
-	dup2(sv, STDOUT_FILENO);
-	close(sv);
-
+exec_memfd(int fd) {
 	char path[64];
 	snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
 
@@ -181,6 +173,31 @@ run_command(const char *cmd, int sv)
 	_exit(EXIT_FAILURE);
 }
 
+int
+make_runnable_memfd(const char *cmd) {
+	int fd = memfd_create("script", 0);
+	if (fd < 0) return -1;
+	if (write(fd, cmd, strlen(cmd)) < 0) {
+		close(fd);
+		return -1;
+	}
+	if (fchmod(fd, 0700) < 0) {
+		close(fd);
+		return -1;
+	}
+	return fd;
+}
+
+void
+run_command(const char *cmd, int sv) {
+	int fd = make_runnable_memfd(cmd);
+	die_if(fd < 0, "make_runnable_memfd");
+	dup2(sv, STDIN_FILENO);
+	dup2(sv, STDOUT_FILENO);
+	close(sv);
+	exec_memfd(fd);
+}
+
 void
 run_all(int epfd)
 {
@@ -193,10 +210,9 @@ run_all(int epfd)
 		if (make_proc(&procs[i])) {
 			close(sv[1]);
 			run_command(specs[i].command, sv[0]);
-		} else {
-			close(sv[0]);
-			procs[i].sv = sv[1];
 		}
+		close(sv[0]);
+		procs[i].sv = sv[1];
 		reg_proc(&procs[i], epfd);
 	}
 }
@@ -211,7 +227,6 @@ wait_events(void *arg)
 		do {
 			nfds = epoll_wait(epfd, events, LENGTH(procs), -1);
 		} while (nfds == -1 && errno == EINTR);
-
 		die_if(nfds < 0, "epoll_wait");
 		for (size_t i = 0; i < nfds; i++)
 			if(update_buffer(events[i].data.ptr))
