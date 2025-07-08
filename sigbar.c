@@ -1,5 +1,5 @@
-#include <bits/pthreadtypes.h>
 #define _GNU_SOURCE
+#include <pthread.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -152,7 +152,10 @@ void
 fd_set_nonblock(int fd) {
 	int flags = fcntl(fd, F_GETFL);
 	die_if((flags < 0), "fcntl(F_GETFL)");
-	die_if((fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0), "fcntl(F_SETFL)");
+	die_if(
+		(fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0),
+		"fcntl(F_SETFL)"
+	);
 }
 
 int
@@ -200,7 +203,10 @@ run_all(int epfd)
 {
 	for (size_t i = 0; i < LENGTH(specs); i++) {
 		int sv[2];
-		die_if((socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0), "socketpair");
+		die_if(
+			(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0),
+			"socketpair"
+		);
 		if (make_proc(&procs[i])) {
 			close(sv[1]);
 			run_command(specs[i].command, sv[0]);
@@ -213,19 +219,23 @@ run_all(int epfd)
 }
 
 void*
-epoll_thread(void *arg)
+epoll_thread_func(void *arg)
 {
+	wait_events(*(int*)arg);
 	return NULL;
 }
 
 int
 main(int argc, char *argv[])
 {
+	int epfd = epoll_create1(0);
 	pthread_t epoll_thread;
+	die_if(
+		(pthread_create(&epoll_thread, NULL, epoll_thread_func, &epfd)
+	), "pthread_create");
 
 	setup_signals();
-	int epfd = epoll_create1(0);
 	run_all(epfd);
-	wait_events(epfd);
+	pthread_join(epoll_thread, NULL);
 	return EXIT_SUCCESS;
 }
