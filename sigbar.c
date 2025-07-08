@@ -39,7 +39,7 @@ static void setup_signals(void);
 static void excluding_puts(const char *str, const char *exc);
 static void print_status(void);
 static int update_buffer(Proc *p);
-static void wait_events(int epfd);
+static void* wait_events(void *arg);
 static void reg_proc(Proc *p, int epfd);
 static void fd_set_nonblock(int fd);
 static void run_command(const char *cmd, int sv);
@@ -123,23 +123,6 @@ update_buffer(Proc *p)
 }
 
 void
-wait_events(int epfd)
-{
-	struct epoll_event events[LENGTH(procs)];
-	for (;;) {
-		int nfds;
-		do {
-			nfds = epoll_wait(epfd, events, LENGTH(procs), -1);
-		} while (nfds == -1 && errno == EINTR);
-
-		die_if(nfds < 0, "epoll_wait");
-		for (size_t i = 0; i < nfds; i++)
-			if(update_buffer(events[i].data.ptr))
-				print_status();
-	}
-}
-
-void
 reg_proc(Proc *p, int epfd)
 {
 	struct epoll_event ev;
@@ -219,9 +202,21 @@ run_all(int epfd)
 }
 
 void*
-epoll_thread_func(void *arg)
+wait_events(void *arg)
 {
-	wait_events(*(int*)arg);
+	int epfd = *(int*)arg;
+	struct epoll_event events[LENGTH(procs)];
+	for (;;) {
+		int nfds;
+		do {
+			nfds = epoll_wait(epfd, events, LENGTH(procs), -1);
+		} while (nfds == -1 && errno == EINTR);
+
+		die_if(nfds < 0, "epoll_wait");
+		for (size_t i = 0; i < nfds; i++)
+			if(update_buffer(events[i].data.ptr))
+				print_status();
+	}
 	return NULL;
 }
 
@@ -232,7 +227,7 @@ main(int argc, char *argv[])
 	pthread_t epoll_thread;
 
 	die_if(
-		pthread_create(&epoll_thread, NULL, epoll_thread_func, &epfd),
+		pthread_create(&epoll_thread, NULL, wait_events, &epfd),
 		"pthread_create"
 	);
 	setup_signals();
