@@ -1,6 +1,8 @@
 PREFIX ?= /usr
 CC ?= cc
 BIN := sigbar
+CFLAGS ?= -Wall -Wextra -O2 -pthread
+LDFLAGS ?=
 
 $(BIN): $(BIN).c config.h
 	$(CC) $(BIN).c $(LDFLAGS)-o $(BIN)

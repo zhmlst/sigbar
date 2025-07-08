@@ -1,3 +1,4 @@
+#include <bits/pthreadtypes.h>
 #define _GNU_SOURCE
 #include <stddef.h>
 #include <stdlib.h>
@@ -211,9 +212,17 @@ run_all(int epfd)
 	}
 }
 
+void*
+epoll_thread(void *arg)
+{
+	return NULL;
+}
+
 int
 main(int argc, char *argv[])
 {
+	pthread_t epoll_thread;
+
 	setup_signals();
 	int epfd = epoll_create1(0);
 	run_all(epfd);
