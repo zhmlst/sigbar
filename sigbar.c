@@ -184,6 +184,11 @@ run_command(const char *cmd, int sv)
 	char *const argv[] = { path, NULL };
 	execve(path, argv, environ);
 
+	if (errno == ENOEXEC) {
+		char *sh_argv[] = { "sh", path, NULL };
+		execve("/bin/sh", sh_argv, environ);
+	}
+
 	perror("execve");
 	close(fd);
 	_exit(EXIT_FAILURE);
