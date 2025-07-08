@@ -33,7 +33,7 @@ typedef struct {
 #include "config.h"
 
 static void die_on_err(ssize_t val, const char *err);
-static void handle_signal(int s);
+static void handle_signal(int sig);
 static void setup_signals(void);
 static void excluding_puts(const char *str, const char *exc);
 static void print_status(void);
@@ -41,7 +41,7 @@ static int update_buffer(Proc *p);
 static void wait_events(int epfd);
 static void reg_proc(Proc *p, int epfd);
 static void fd_set_nonblock(int fd);
-static void run_command(int sv, const char *c);
+static void run_command(int sv, const char *cmd);
 static void spawn_proc(Proc *p, const Spec *s);
 
 static Proc procs[LENGTH(specs)];
@@ -58,9 +58,12 @@ die_on_err(ssize_t val, const char *err)
 void
 handle_signal(int s)
 {
-	for (size_t i = 0; i < LENGTH(procs); i++)
-		if (specs[i].signal == s - SIGRTMIN)
-			write(procs[i].sv, "\n", 1);
+	for (size_t i = 0; i < LENGTH(procs); i++) {
+		if (specs[i].signal == s - SIGRTMIN) {
+			ssize_t w = write(procs[i].sv, "\n", 1);
+			die_on_err(w, "write(proc.sv)");
+		}
+	}
 }
 
 void
@@ -200,5 +203,5 @@ main(int argc, char *argv[])
 		reg_proc(&procs[i], epfd);
 	}
 	wait_events(epfd);
-	return 0;
+	return EXIT_SUCCESS;
 }
