@@ -51,9 +51,9 @@ static void run_all(int epfd);
 static Proc procs[LENGTH(specs)];
 
 void
-die_if(int conidion, const char *errmsg)
+die_if(int condition, const char *errmsg)
 {
-	if (conidion) {
+	if (condition) {
 		perror(errmsg);
 		exit(EXIT_FAILURE);
 	}
