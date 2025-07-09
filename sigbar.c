@@ -235,8 +235,8 @@ wait_events(void *arg)
 	return NULL;
 }
 
-int
-main(int argc, char *argv[])
+void
+launch(void)
 {
 	int epfd = epoll_create1(0);
 	pthread_t epoll_thread;
@@ -248,5 +248,11 @@ main(int argc, char *argv[])
 	setup_signals();
 	run_all(epfd);
 	pthread_join(epoll_thread, NULL);
+}
+
+int
+main(int argc, char *argv[])
+{
+	launch();
 	return EXIT_SUCCESS;
 }
